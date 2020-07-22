@@ -8,3 +8,6 @@
  */
 
 rootProject.name = "book-search"
+include("search-db")
+include("search-spider")
+include("search-backend")
