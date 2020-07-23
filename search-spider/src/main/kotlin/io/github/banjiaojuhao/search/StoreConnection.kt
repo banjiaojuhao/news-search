@@ -13,7 +13,7 @@ import java.util.concurrent.Executors
 
 object StoreConnection {
     private val db by lazy {
-        val url = "jdbc:mysql://localhost:3306/sentiment"
+        val url = "jdbc:mysql://localhost:3306/news_search"
         val dbUser = "root"
         val dbPassword = "pwdofmysql8!"
         Database
