@@ -9,6 +9,7 @@ import io.vertx.kotlin.ext.web.client.sendAwait
 import io.vertx.kotlin.ext.web.client.webClientOptionsOf
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.jsoup.Jsoup
 import java.util.*
 
 private const val UA_Win_Chrome = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36"
@@ -25,6 +26,13 @@ fun main(args: Array<String>) = runBlocking<Unit> {
 //        , proxyOptions = proxyOptionsOf(host = "127.0.0.1", port = 8888)
     )
     val webClient = WebClient.create(vertx, webClientOptions)
+    fetchList(webClient)
+
+    vertx.closeAwait()
+    StoreConnection.close()
+}
+
+private suspend fun fetchList(webClient: WebClient) {
     val currentWorkerId = UUID.randomUUID().toString()
 
     while (true) {
@@ -33,23 +41,19 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             println("can't get more task, exit")
             break
         }
-        val resultList = arrayListOf<Pair<Int, String>>()
-        var nextFetchNo = 0
-        for (book_id in task.nextFetchNo..task.endNo) {
-            val request = webClient.getAbs("https://opac.lib.utsz.edu.cn/Search/searchdetail.jsp"
-                + "?v_tablearray=bibliosm,serbibm,apabibibm,mmbibm,&v_curtable=bibliosm&v_recno="
-                + book_id.toString().padStart(7, '0'))
+        val resultList = hashSetOf<String>()
+        var nextFetchOffset = task.nextFetchOffset
+        while (true) {
+            val request = webClient.getAbs("http://www.hitsz.edu.cn/article/id-${task.topicId}.html?maxPageItems=20&pager.offset=$nextFetchOffset")
             var response: HttpResponse<Buffer>? = null
             for (i in 0..2) {
                 try {
                     val tmpRequest = request.copy()
-                    tmpRequest.sendAwait()
+                    response = tmpRequest.sendAwait()
                     break
                 } catch (e: IllegalStateException) {
                     if (e.message?.contains("Client is closed") == true) {
                         println("end program")
-                        saveResult(currentWorkerId, book_id, resultList)
-                        resultList.clear()
                         break
                     }
                 } catch (e: Exception) {
@@ -58,36 +62,35 @@ fun main(args: Array<String>) = runBlocking<Unit> {
             }
             if (response == null) {
                 println("end program")
-                nextFetchNo = book_id
                 break
             }
             if (response.statusCode() != 200) {
-                println("invalid status code(${response.statusCode()}) for book: $book_id")
-                nextFetchNo = book_id
+                println("invalid status code(${response.statusCode()}) for id, offset: ${task.topicId}, $nextFetchOffset")
                 break
             }
             val text = response.bodyAsString()
-            val titleBefore = "document.title ='"
-            if (text[text.indexOf(titleBefore) + titleBefore.length] == '\'') {
-                println("fetch miss on $book_id")
-            } else {
-                println("fetch hit on $book_id")
-                resultList.add(book_id to text)
+            val dom = Jsoup.parse(text)
+            val result = dom.select("a")
+                .map { it.attr("href").substringAfter("/article/view/id-").substringBefore(".html") }
+                .filter { it.length == 5 }
+            if (result.isEmpty()) {
+                nextFetchOffset = -1
+                break
             }
-            // save into db every 20 requests
-            if (book_id % 20 == 0) {
-                saveResult(currentWorkerId, book_id + 1, resultList)
-                println("saved ${resultList.size} page")
+            println("got ${result.size} article on [${task.topicId}, ${task.nextFetchOffset}]")
+            resultList.addAll(result)
+
+            nextFetchOffset += 20
+            // save into db every 5 requests
+            if (nextFetchOffset % 100 == 0) {
+                saveResult(currentWorkerId, nextFetchOffset, resultList)
+                println("saved ${resultList.size} article")
                 resultList.clear()
             }
             delay(300L)
-            nextFetchNo = book_id + 1
         }
-        saveResult(currentWorkerId, nextFetchNo, resultList)
+        saveResult(currentWorkerId, nextFetchOffset, resultList)
         resultList.clear()
-        println("finish task[${task.nextFetchNo}, ${task.endNo}]")
+        println("finish task[${task.topicId}, ${task.nextFetchOffset}]")
     }
-
-    vertx.closeAwait()
-    StoreConnection.close()
 }

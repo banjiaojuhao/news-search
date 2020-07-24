@@ -4,11 +4,10 @@ import io.github.banjiaojuhao.search.db.SpiderTaskTable
 import io.github.banjiaojuhao.search.db.WebPageTable
 import org.jetbrains.exposed.sql.*
 
-private const val END_BOOK_ID = 4700000
 private const val REDISPATCH_TIME = 3600_000
 
 
-data class Task(var nextFetchNo: Int, var endNo: Int)
+data class Task(val topicId: String,var nextFetchOffset: Int)
 
 
 suspend fun getTask(currentWorkerId: String): Task? {
@@ -16,54 +15,46 @@ suspend fun getTask(currentWorkerId: String): Task? {
         val needInit = SpiderTaskTable.selectAll().count() == 0
             && WebPageTable.selectAll().count() == 0
         if (needInit) {
-            SpiderTaskTable.insert {
-                it[lastHitNo] = -1
-                it[nextFetchNo] = 0
-                it[endFetchNo] = END_BOOK_ID
-
-                it[workerId] = currentWorkerId
-                it[lastFetchTime] = 0
-            }
-            Task(0, END_BOOK_ID)
-        } else {
-            SpiderTaskTable.update({
-                (SpiderTaskTable.lastFetchTime less (System.currentTimeMillis() - REDISPATCH_TIME))
-                    .or(SpiderTaskTable.workerId eq "")
-            }, limit = 1) {
-                it[workerId] = currentWorkerId
-                it[lastFetchTime] = System.currentTimeMillis()
-            }
-            val task = SpiderTaskTable.select {
-                (SpiderTaskTable.workerId eq currentWorkerId) and (
-                    SpiderTaskTable.nextFetchNo.lessEq(SpiderTaskTable.endFetchNo)
-                    )
-            }.firstOrNull()
-            if (task == null) {
-                null
-            } else {
-                Task(task[SpiderTaskTable.nextFetchNo], task[SpiderTaskTable.endFetchNo])
+            val topicIdList = listOf("116", "75", "74", "81", "78")
+            SpiderTaskTable.batchInsert(topicIdList) {
+                this[SpiderTaskTable.topicId] = it
             }
         }
+        SpiderTaskTable.update({
+            (SpiderTaskTable.lastFetchTime less (System.currentTimeMillis() - REDISPATCH_TIME))
+                .or(SpiderTaskTable.workerId eq "")
+        }, limit = 1) {
+            it[workerId] = currentWorkerId
+            it[lastFetchTime] = System.currentTimeMillis()
+        }
+        val task = SpiderTaskTable.select {
+            (SpiderTaskTable.workerId eq currentWorkerId) and (
+                SpiderTaskTable.nextFetchOffset greaterEq 0
+                )
+        }.firstOrNull()
+        if (task == null) {
+            null
+        } else {
+            Task(task[SpiderTaskTable.topicId], task[SpiderTaskTable.nextFetchOffset])
+        }
+
     }
 }
 
-suspend fun saveResult(currentWorkerId: String, nextFetchNo: Int, result: List<Pair<Int, String>>) {
+suspend fun saveResult(currentWorkerId: String, nextFetchOffset: Int, result: Collection<String>) {
     StoreConnection.execute {
-        WebPageTable.batchInsert(result) {
-            this[WebPageTable.newsId] = it.first
-            this[WebPageTable.webPage] = it.second
+        WebPageTable.batchInsert(result, ignore = true) {
+            this[WebPageTable.newsId] = it
+            this[WebPageTable.webPage] = ""
         }
         SpiderTaskTable.update({
             SpiderTaskTable.workerId eq currentWorkerId
         }) {
-            if (result.isNotEmpty()) {
-                it[lastHitNo] = result.last().first
-            }
             it[lastFetchTime] = System.currentTimeMillis()
-            it[this.nextFetchNo] = nextFetchNo
+            it[this.nextFetchOffset] = nextFetchOffset
         }
         SpiderTaskTable.deleteWhere {
-            SpiderTaskTable.nextFetchNo.greater(SpiderTaskTable.endFetchNo)
+            SpiderTaskTable.nextFetchOffset eq -1
         }
     }
 }
