@@ -1,7 +1,9 @@
 package io.github.banjiaojuhao.search
 
+import io.github.banjiaojuhao.search.db.WebPageTable
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
+import io.vertx.ext.web.client.HttpRequest
 import io.vertx.ext.web.client.HttpResponse
 import io.vertx.ext.web.client.WebClient
 import io.vertx.kotlin.core.closeAwait
@@ -9,6 +11,8 @@ import io.vertx.kotlin.ext.web.client.sendAwait
 import io.vertx.kotlin.ext.web.client.webClientOptionsOf
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.update
 import org.jsoup.Jsoup
 import java.util.*
 
@@ -27,6 +31,7 @@ fun main(args: Array<String>) = runBlocking<Unit> {
     )
     val webClient = WebClient.create(vertx, webClientOptions)
     fetchList(webClient)
+    fetchArticle(webClient)
 
     vertx.closeAwait()
     StoreConnection.close()
@@ -44,22 +49,10 @@ private suspend fun fetchList(webClient: WebClient) {
         val resultList = hashSetOf<String>()
         var nextFetchOffset = task.nextFetchOffset
         while (true) {
-            val request = webClient.getAbs("http://www.hitsz.edu.cn/article/id-${task.topicId}.html?maxPageItems=20&pager.offset=$nextFetchOffset")
-            var response: HttpResponse<Buffer>? = null
-            for (i in 0..2) {
-                try {
-                    val tmpRequest = request.copy()
-                    response = tmpRequest.sendAwait()
-                    break
-                } catch (e: IllegalStateException) {
-                    if (e.message?.contains("Client is closed") == true) {
-                        println("end program")
-                        break
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
+            val request = webClient
+                .getAbs("http://www.hitsz.edu.cn/article/id-${task.topicId}.html?maxPageItems=20&pager.offset=$nextFetchOffset")
+                .timeout(10_000)
+            val response = httpGet(request)
             if (response == null) {
                 println("end program")
                 break
@@ -93,4 +86,63 @@ private suspend fun fetchList(webClient: WebClient) {
         resultList.clear()
         println("finish task[${task.topicId}, ${task.nextFetchOffset}]")
     }
+}
+
+private suspend fun fetchArticle(webClient: WebClient) {
+    while (true) {
+        val taskList = StoreConnection.execute {
+            WebPageTable.select {
+                WebPageTable.state eq 0
+            }.limit(20).map { it[WebPageTable.newsId] }
+        }
+        if (taskList.isEmpty()) {
+            println("finish all article")
+            break
+        }
+        val resultList = arrayListOf<Pair<String, String>>()
+        for (newsId in taskList) {
+            val request = webClient.getAbs("http://www.hitsz.edu.cn/article/view/id-$newsId.html")
+            val response = httpGet(request)
+            if (response == null) {
+                println("end program")
+                break
+            }
+            if (response.statusCode() != 200) {
+                println("invalid status code(${response.statusCode()}) for newsId: $newsId")
+                break
+            }
+            val text = response.bodyAsString()
+            resultList.add(newsId to text)
+        }
+        StoreConnection.execute {
+            for (pair in resultList) {
+                WebPageTable.update({
+                    WebPageTable.newsId eq pair.first
+                }) {
+                    it[this.webPage] = pair.second
+                    it[this.state] = 2
+                }
+            }
+        }
+        println("saved ${resultList.size} article")
+    }
+}
+
+private suspend fun httpGet(request: HttpRequest<Buffer>): HttpResponse<Buffer>? {
+    var response: HttpResponse<Buffer>? = null
+    for (i in 0..2) {
+        try {
+            val tmpRequest = request.copy()
+            response = tmpRequest.sendAwait()
+            break
+        } catch (e: IllegalStateException) {
+            if (e.message?.contains("Client is closed") == true) {
+                println("end program")
+                break
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    return response
 }
