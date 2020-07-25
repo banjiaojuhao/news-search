@@ -43,7 +43,7 @@ dependencies {
 
 application {
     // Define the main class for the application.
-    mainClassName = "io.github.banjiaojuhao.search.spider.AppKt"
+    mainClassName = "io.github.banjiaojuhao.search.AppKt"
 }
 
 tasks.test {

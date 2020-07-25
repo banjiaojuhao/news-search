@@ -3,6 +3,7 @@ package io.github.banjiaojuhao.search
 import io.vertx.core.Vertx
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.StaticHandler
+import io.vertx.kotlin.core.closeAwait
 import io.vertx.kotlin.core.http.httpServerOptionsOf
 import io.vertx.kotlin.core.http.listenAwait
 import io.vertx.kotlin.coroutines.awaitEvent
@@ -69,4 +70,5 @@ internal suspend fun CoroutineScope.runSearchServer() {
         }
     }
     println("stop program")
+    vertx.closeAwait()
 }
