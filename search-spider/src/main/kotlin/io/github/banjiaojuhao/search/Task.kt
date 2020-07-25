@@ -3,13 +3,12 @@ package io.github.banjiaojuhao.search
 import io.github.banjiaojuhao.search.db.SpiderTaskTable
 import io.github.banjiaojuhao.search.db.StoreConnection
 import io.github.banjiaojuhao.search.db.WebPageTable
-import jdk.javadoc.internal.tool.Main.execute
 import org.jetbrains.exposed.sql.*
 
 private const val REDISPATCH_TIME = 3600_000
 
 
-data class Task(val topicId: String,var nextFetchOffset: Int)
+data class Task(val topicId: String, var nextFetchOffset: Int)
 
 
 suspend fun getTask(dbConnection: StoreConnection, currentWorkerId: String): Task? {
