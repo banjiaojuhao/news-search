@@ -1,5 +1,6 @@
 package io.github.banjiaojuhao.search
 
+import io.github.banjiaojuhao.search.db.StoreConnection
 import io.github.banjiaojuhao.search.db.WebPageTable
 import io.vertx.core.Vertx
 import io.vertx.core.buffer.Buffer
@@ -18,6 +19,8 @@ import java.util.*
 
 private const val UA_Win_Chrome = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36"
 
+private val dbConnection = StoreConnection()
+
 fun main(args: Array<String>) = runBlocking<Unit> {
     val vertx = Vertx.vertx()
     val webClientOptions = webClientOptionsOf(
@@ -34,14 +37,14 @@ fun main(args: Array<String>) = runBlocking<Unit> {
     fetchArticle(webClient)
 
     vertx.closeAwait()
-    StoreConnection.close()
+    dbConnection.close()
 }
 
 private suspend fun fetchList(webClient: WebClient) {
     val currentWorkerId = UUID.randomUUID().toString()
 
     while (true) {
-        val task = getTask(currentWorkerId)
+        val task = getTask(dbConnection, currentWorkerId)
         if (task == null) {
             println("can't get more task, exit")
             break
@@ -76,13 +79,13 @@ private suspend fun fetchList(webClient: WebClient) {
             nextFetchOffset += 20
             // save into db every 5 requests
             if (nextFetchOffset % 100 == 0) {
-                saveResult(currentWorkerId, nextFetchOffset, resultList)
+                saveResult(dbConnection, currentWorkerId, nextFetchOffset, resultList)
                 println("saved ${resultList.size} article")
                 resultList.clear()
             }
             delay(300L)
         }
-        saveResult(currentWorkerId, nextFetchOffset, resultList)
+        saveResult(dbConnection, currentWorkerId, nextFetchOffset, resultList)
         resultList.clear()
         println("finish task[${task.topicId}, ${task.nextFetchOffset}]")
     }
@@ -90,10 +93,10 @@ private suspend fun fetchList(webClient: WebClient) {
 
 private suspend fun fetchArticle(webClient: WebClient) {
     while (true) {
-        val taskList = StoreConnection.execute {
+        val taskList = dbConnection.execute {
             WebPageTable.select {
                 WebPageTable.state eq 0
-            }.limit(20).map { it[WebPageTable.newsId] }
+            }.limit(20).map { it[WebPageTable.articleId] }
         }
         if (taskList.isEmpty()) {
             println("finish all article")
@@ -114,10 +117,10 @@ private suspend fun fetchArticle(webClient: WebClient) {
             val text = response.bodyAsString()
             resultList.add(newsId to text)
         }
-        StoreConnection.execute {
+        dbConnection.execute {
             for (pair in resultList) {
                 WebPageTable.update({
-                    WebPageTable.newsId eq pair.first
+                    WebPageTable.articleId eq pair.first
                 }) {
                     it[this.webPage] = pair.second
                     it[this.state] = 2

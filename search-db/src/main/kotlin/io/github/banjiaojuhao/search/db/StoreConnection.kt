@@ -1,17 +1,16 @@
-package io.github.banjiaojuhao.search
+package io.github.banjiaojuhao.search.db
 
-import io.github.banjiaojuhao.search.db.SpiderTaskTable
-import io.github.banjiaojuhao.search.db.WebPageTable
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.io.Closeable
 import java.sql.DriverManager
 import java.util.concurrent.Executors
 
-object StoreConnection {
+class StoreConnection : Closeable {
     private val db by lazy {
         val url = "jdbc:mysql://localhost:3306/news_search"
         val dbUser = "root"
@@ -35,7 +34,7 @@ object StoreConnection {
             }
         }
 
-    fun close() {
+    override fun close() {
         context.close()
     }
 }

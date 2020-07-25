@@ -15,7 +15,7 @@ object SpiderTaskTable : IntIdTable() {
 object WebPageTable : IntIdTable() {
     override val tableName: String
         get() = "web_page_table"
-    val newsId = varchar("news_id", 5).uniqueIndex()
+    val articleId = varchar("news_id", 5).uniqueIndex()
     val webPage = text("web_page")
 
     val lastFetchTime = long("last_fetch_time").default(0)

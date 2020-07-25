@@ -19,4 +19,6 @@ object Versions {
     const val exposed = "0.17.7"
     const val mapdb = "3.0.8"
     const val konf = "0.22.0"
+
+    const val lucene = "8.6.0"
 }

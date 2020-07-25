@@ -13,6 +13,7 @@ dependencies {
     // Use the Kotlin JDK 8 standard library.
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
+    implementation("org.jetbrains.kotlinx", "kotlinx-coroutines-core", Versions.kotlinCoroutines)
     implementation("org.jetbrains.exposed", "exposed", Versions.exposed)
 
     // Use the Kotlin test library.

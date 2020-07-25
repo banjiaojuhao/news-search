@@ -1,7 +1,9 @@
 package io.github.banjiaojuhao.search
 
 import io.github.banjiaojuhao.search.db.SpiderTaskTable
+import io.github.banjiaojuhao.search.db.StoreConnection
 import io.github.banjiaojuhao.search.db.WebPageTable
+import jdk.javadoc.internal.tool.Main.execute
 import org.jetbrains.exposed.sql.*
 
 private const val REDISPATCH_TIME = 3600_000
@@ -10,8 +12,8 @@ private const val REDISPATCH_TIME = 3600_000
 data class Task(val topicId: String,var nextFetchOffset: Int)
 
 
-suspend fun getTask(currentWorkerId: String): Task? {
-    return StoreConnection.execute {
+suspend fun getTask(dbConnection: StoreConnection, currentWorkerId: String): Task? {
+    return dbConnection.execute {
         val needInit = SpiderTaskTable.selectAll().count() == 0
             && WebPageTable.selectAll().count() == 0
         if (needInit) {
@@ -41,10 +43,10 @@ suspend fun getTask(currentWorkerId: String): Task? {
     }
 }
 
-suspend fun saveResult(currentWorkerId: String, nextFetchOffset: Int, result: Collection<String>) {
-    StoreConnection.execute {
+suspend fun saveResult(dbConnection: StoreConnection, currentWorkerId: String, nextFetchOffset: Int, result: Collection<String>) {
+    dbConnection.execute {
         WebPageTable.batchInsert(result, ignore = true) {
-            this[WebPageTable.newsId] = it
+            this[WebPageTable.articleId] = it
             this[WebPageTable.webPage] = ""
         }
         SpiderTaskTable.update({
