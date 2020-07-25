@@ -1,5 +1,6 @@
 package io.github.banjiaojuhao.search
 
+import io.github.banjiaojuhao.search.db.StoreConnection
 import io.github.banjiaojuhao.search.db.WebPageTable
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer
 import org.apache.lucene.document.*
@@ -14,7 +15,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 private val formatterYMDHM = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-internal suspend fun makeIndex() {
+internal suspend fun makeIndex(dbConnection: StoreConnection) {
     val indexDir = FSDirectory.open(Paths.get("index"))
     val analyzer = SmartChineseAnalyzer()
     val indexWriterConfig = IndexWriterConfig(analyzer)
